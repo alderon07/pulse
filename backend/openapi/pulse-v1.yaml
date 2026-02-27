@@ -1,0 +1,89 @@
+openapi: 3.0.3
+info:
+  title: Pulse Backend API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/ping/{token}:
+    get:
+      summary: Record a heartbeat ping for a check token
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ping accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+    post:
+      summary: Record a heartbeat ping with optional metrics
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PingBody'
+      responses:
+        '200':
+          description: Ping accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+  /api/v1/checks:
+    get:
+      security:
+        - bearerAuth: []
+      responses:
+        '501':
+          description: Not implemented in scaffold
+    post:
+      security:
+        - bearerAuth: []
+      responses:
+        '501':
+          description: Not implemented in scaffold
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PingBody:
+      type: object
+      properties:
+        duration_ms:
+          type: integer
+          minimum: 0
+        output_size:
+          type: integer
+          minimum: 0
+        success:
+          type: boolean
+    PingResponse:
+      type: object
+      required: [ok, status, next_due_at]
+      properties:
+        ok:
+          type: boolean
+        status:
+          type: string
+          enum: [up, late, down, paused]
+        next_due_at:
+          type: string
+          format: date-time
+        idempotent:
+          type: boolean

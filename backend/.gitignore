@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+bin/
+dist/
+tmp/
+coverage.out
+*.test
+*.log
+.DS_Store
+.idea/
+.vscode/
+.mise.local.toml
+postgres-data/
+.cache/
