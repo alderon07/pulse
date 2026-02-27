@@ -4,57 +4,6 @@ info:
   version: 1.0.0
 servers:
   - url: http://localhost:8080
-paths:
-  /v1/ping/{token}:
-    get:
-      summary: Record a heartbeat ping for a check token
-      parameters:
-        - in: path
-          name: token
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Ping accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PingResponse'
-    post:
-      summary: Record a heartbeat ping with optional metrics
-      parameters:
-        - in: path
-          name: token
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PingBody'
-      responses:
-        '200':
-          description: Ping accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PingResponse'
-  /api/v1/checks:
-    get:
-      security:
-        - bearerAuth: []
-      responses:
-        '501':
-          description: Not implemented in scaffold
-    post:
-      security:
-        - bearerAuth: []
-      responses:
-        '501':
-          description: Not implemented in scaffold
 components:
   securitySchemes:
     bearerAuth:
@@ -62,28 +11,213 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
     PingBody:
       type: object
       properties:
-        duration_ms:
-          type: integer
-          minimum: 0
-        output_size:
-          type: integer
-          minimum: 0
-        success:
-          type: boolean
+        duration_ms: { type: integer, minimum: 0 }
+        output_size: { type: integer, minimum: 0 }
+        success: { type: boolean }
     PingResponse:
       type: object
       required: [ok, status, next_due_at]
       properties:
-        ok:
-          type: boolean
+        ok: { type: boolean }
         status:
           type: string
           enum: [up, late, down, paused]
-        next_due_at:
-          type: string
-          format: date-time
-        idempotent:
-          type: boolean
+        next_due_at: { type: string, format: date-time }
+        idempotent: { type: boolean }
+    Check:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        token: { type: string }
+        expected_interval_seconds: { type: integer }
+        grace_seconds: { type: integer }
+        status: { type: string, enum: [up, late, down, paused] }
+        last_ping_at: { type: string, format: date-time, nullable: true }
+        next_due_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Event:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        received_at: { type: string, format: date-time }
+        duration_ms: { type: integer, nullable: true }
+        output_size: { type: integer, nullable: true }
+        success: { type: boolean, nullable: true }
+        meta_json: { type: string, nullable: true }
+    AlertChannel:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [email, webhook] }
+        target: { type: string }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+security: []
+paths:
+  /v1/ping/{token}:
+    get:
+      summary: Record heartbeat ping
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PingResponse' }
+    post:
+      summary: Record heartbeat ping with optional metrics
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PingBody' }
+      responses:
+        '200':
+          description: accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PingResponse' }
+  /api/v1/checks:
+    get:
+      summary: List checks
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: checks
+    post:
+      summary: Create check
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+  /api/v1/checks/{id}:
+    get:
+      summary: Get check
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: check
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+    patch:
+      summary: Patch check
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: updated
+  /api/v1/checks/{id}/pause:
+    post:
+      summary: Pause check
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: paused }
+  /api/v1/checks/{id}/resume:
+    post:
+      summary: Resume check
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: resumed }
+  /api/v1/checks/{id}/rotate-token:
+    post:
+      summary: Rotate check token
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: rotated }
+  /api/v1/checks/{id}/events:
+    get:
+      summary: List check events
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+  /api/v1/alert-channels:
+    get:
+      summary: List alert channels
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: channels }
+    post:
+      summary: Create alert channel
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertChannel' }
+  /api/v1/alert-channels/{id}:
+    patch:
+      summary: Patch alert channel
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: updated }

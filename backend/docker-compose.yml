@@ -50,6 +50,7 @@ services:
       INVALID_TOKEN_BURST: 10
       WEBHOOK_TIMEOUT_SECONDS: 5
       IDEMPOTENCY_TTL_HOURS: 24
+      JWT_HS256_SECRET: dev-secret-change-me
       TZ: UTC
     ports:
       - "8080:8080"

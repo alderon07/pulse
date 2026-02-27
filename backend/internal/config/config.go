@@ -25,6 +25,7 @@ type Config struct {
 	JWTIssuer                 string
 	JWTAudience               string
 	JWTJWKSURL                string
+	JWTHS256Secret            string
 }
 
 func Load() (Config, error) {
@@ -46,6 +47,7 @@ func Load() (Config, error) {
 		JWTIssuer:                 os.Getenv("JWT_ISSUER"),
 		JWTAudience:               os.Getenv("JWT_AUDIENCE"),
 		JWTJWKSURL:                os.Getenv("JWT_JWKS_URL"),
+		JWTHS256Secret:            os.Getenv("JWT_HS256_SECRET"),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

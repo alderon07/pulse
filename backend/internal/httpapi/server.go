@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -61,19 +62,20 @@ func (s *Server) Router() http.Handler {
 	r.Get("/ping/{token}", s.handleDeprecatedPing)
 	r.Post("/ping/{token}", s.handleDeprecatedPing)
 
-	// Authenticated management endpoints are stubbed in this scaffold and can be filled incrementally.
+	// Authenticated management endpoints.
 	r.Route("/api/v1", func(api chi.Router) {
-		api.MethodFunc(http.MethodGet, "/checks", s.notImplemented)
-		api.MethodFunc(http.MethodPost, "/checks", s.notImplemented)
-		api.MethodFunc(http.MethodGet, "/checks/{id}", s.notImplemented)
-		api.MethodFunc(http.MethodPatch, "/checks/{id}", s.notImplemented)
-		api.MethodFunc(http.MethodPost, "/checks/{id}/pause", s.notImplemented)
-		api.MethodFunc(http.MethodPost, "/checks/{id}/resume", s.notImplemented)
-		api.MethodFunc(http.MethodPost, "/checks/{id}/rotate-token", s.notImplemented)
-		api.MethodFunc(http.MethodGet, "/checks/{id}/events", s.notImplemented)
-		api.MethodFunc(http.MethodGet, "/alert-channels", s.notImplemented)
-		api.MethodFunc(http.MethodPost, "/alert-channels", s.notImplemented)
-		api.MethodFunc(http.MethodPatch, "/alert-channels/{id}", s.notImplemented)
+		api.Use(s.authMiddleware)
+		api.MethodFunc(http.MethodGet, "/checks", s.handleListChecks)
+		api.MethodFunc(http.MethodPost, "/checks", s.handleCreateCheck)
+		api.MethodFunc(http.MethodGet, "/checks/{id}", s.handleGetCheck)
+		api.MethodFunc(http.MethodPatch, "/checks/{id}", s.handlePatchCheck)
+		api.MethodFunc(http.MethodPost, "/checks/{id}/pause", s.handlePauseCheck)
+		api.MethodFunc(http.MethodPost, "/checks/{id}/resume", s.handleResumeCheck)
+		api.MethodFunc(http.MethodPost, "/checks/{id}/rotate-token", s.handleRotateCheckToken)
+		api.MethodFunc(http.MethodGet, "/checks/{id}/events", s.handleListEvents)
+		api.MethodFunc(http.MethodGet, "/alert-channels", s.handleListAlertChannels)
+		api.MethodFunc(http.MethodPost, "/alert-channels", s.handleCreateAlertChannel)
+		api.MethodFunc(http.MethodPatch, "/alert-channels/{id}", s.handlePatchAlertChannel)
 	})
 
 	return r
@@ -126,10 +128,6 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) notImplemented(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented, "not implemented")
-}
-
 func setNoStoreHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
@@ -156,6 +154,10 @@ func clientIP(r *http.Request) string {
 		if len(parts) > 0 {
 			return strings.TrimSpace(parts[0])
 		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
 	}
 	return r.RemoteAddr
 }

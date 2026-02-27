@@ -22,6 +22,10 @@ func main() {
 		logger.Error("load config", "error", err)
 		os.Exit(1)
 	}
+	if cfg.JWTHS256Secret == "" {
+		logger.Error("invalid config", "error", "JWT_HS256_SECRET is required for authenticated /api/v1 endpoints")
+		os.Exit(1)
+	}
 
 	database, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
