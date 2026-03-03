@@ -1,8 +1,8 @@
-# General
+# Project Standards
 
-- ALWAYS do TDD
-- Update outdated documentation
-- Update TODO.md with current progress, future features to implement, and features already completed
-- ALWAYS look for security hardening opportunities
-- ALWAYS look for performance improvement opportunities
-- Do mobile first development
+- **TDD**: Always write tests first, then implement to make them pass.
+- **Documentation**: Update outdated docs whenever you touch related code.
+- **TODO.md**: Keep `TODO.md` current — log completed features, in-progress work, and planned features.
+- **Security**: Actively look for and apply security hardening (input validation, auth checks, dependency audits, etc.).
+- **Performance**: Actively look for performance improvements (caching, lazy loading, query optimization, etc.).
+- **Mobile-first**: Design and implement for mobile viewports first, then enhance for larger screens.

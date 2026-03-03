@@ -1,4 +1,13 @@
 import Link from "next/link";
+import {
+  BookOpen,
+  Github,
+  LogIn,
+  LayoutDashboard,
+  Home,
+  FileText,
+  Activity,
+} from "lucide-react";
 import { tw, fonts, inlineStyles } from "@/lib/theme";
 
 // ─── Scan Lines ─────────────────────────────────────────────
@@ -39,7 +48,7 @@ export function TerminalBlock({
   return (
     <div className={tw.cardOverflow}>
       <WindowChrome label={label} />
-      <pre className="overflow-x-auto scrollbar-none p-5 text-sm leading-relaxed text-green-300/90">
+      <pre className="no-scrollbar overflow-x-auto p-5 text-sm leading-relaxed text-green-300/90">
         {children}
       </pre>
     </div>
@@ -113,6 +122,61 @@ export function Divider({ className }: { className?: string }) {
   );
 }
 
+// ─── Nav Icons ──────────────────────────────────────────────
+const NAV_ICONS = {
+  docs: BookOpen,
+  github: Github,
+  login: LogIn,
+  dashboard: LayoutDashboard,
+  checks: Activity,
+  home: Home,
+  status: FileText,
+} as const;
+
+export type NavIcon = keyof typeof NAV_ICONS;
+
+export function NavItem({
+  href,
+  label,
+  icon,
+  active,
+  external,
+}: {
+  href: string;
+  label: string;
+  icon: NavIcon;
+  active?: boolean;
+  external?: boolean;
+}) {
+  const Icon = NAV_ICONS[icon];
+  const cls = active ? tw.navActive : tw.navLink;
+
+  const content = (
+    <>
+      <Icon size={16} className="sm:hidden" aria-label={label} />
+      <span className="hidden sm:inline">[{label}]</span>
+    </>
+  );
+
+  if (active) {
+    return <span className={`${cls} flex items-center`}>{content}</span>;
+  }
+
+  if (external || !href.startsWith("/")) {
+    return (
+      <a href={href} className={`${cls} flex items-center`}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className={`${cls} flex items-center`}>
+      {content}
+    </Link>
+  );
+}
+
 // ─── Pulse Logo ─────────────────────────────────────────────
 export function PulseLogo({ asLink }: { asLink?: boolean }) {
   const inner = (
@@ -126,13 +190,13 @@ export function PulseLogo({ asLink }: { asLink?: boolean }) {
 
   if (asLink) {
     return (
-      <Link href="/" className={`text-lg ${tw.navActive} transition hover:text-green-300`}>
+      <Link href="/" className={`shrink-0 text-lg ${tw.navActive} transition hover:text-green-300`}>
         {inner}
       </Link>
     );
   }
 
-  return <span className={`text-lg ${tw.navActive}`}>{inner}</span>;
+  return <span className={`shrink-0 text-lg ${tw.navActive}`}>{inner}</span>;
 }
 
 // ─── Footer ─────────────────────────────────────────────────

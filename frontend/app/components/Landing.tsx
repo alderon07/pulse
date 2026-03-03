@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { LogIn } from "lucide-react";
 import { isClerkUiEnabled } from "@/lib/clerk-config";
 import { tw, fonts, statusStyles } from "@/lib/theme";
-import { ScanLines, WindowChrome, Footer, PulseLogo, Divider } from "./ui";
+import { ScanLines, WindowChrome, Footer, PulseLogo, Divider, NavItem } from "./ui";
 
 const TERMINAL_LINES = [
   { prompt: true, text: 'curl -s https://pulse.dev/v1/ping/tok_abc123' },
@@ -58,30 +59,25 @@ export default function Landing() {
       <nav className={tw.navWrapper}>
         <PulseLogo />
         <div className={tw.navLinks}>
-          <Link href="/docs" className={tw.navLink}>[docs]</Link>
-          <a href="#" className={tw.navLink}>[github]</a>
+          <NavItem href="/docs" label="docs" icon="docs" />
+          <NavItem href="#" label="github" icon="github" external />
           {isClerkUiEnabled ? (
             <>
               <SignedOut>
                 <SignInButton mode="modal">
                   <button type="button" className={`${tw.navActive} transition hover:text-green-300`}>
-                    [login]
+                    <LogIn size={16} className="sm:hidden" />
+                    <span className="hidden sm:inline">[login]</span>
                   </button>
                 </SignInButton>
               </SignedOut>
               <SignedIn>
-                <div className="flex items-center gap-3">
-                  <Link href="/checks" className={`${tw.navActive} transition hover:text-green-300`}>
-                    [dashboard]
-                  </Link>
-                  <UserButton />
-                </div>
+                <NavItem href="/checks" label="dashboard" icon="dashboard" />
+                <UserButton />
               </SignedIn>
             </>
           ) : (
-            <Link href="/checks" className={`${tw.navActive} transition hover:text-green-300`}>
-              [checks]
-            </Link>
+            <NavItem href="/checks" label="checks" icon="checks" />
           )}
         </div>
       </nav>
@@ -91,7 +87,7 @@ export default function Landing() {
         {/* Terminal window */}
         <div className={tw.cardOverflow}>
           <WindowChrome label="bash — pulse" large />
-          <div className="space-y-1 p-5 text-sm leading-relaxed">
+          <div className="no-scrollbar overflow-x-auto space-y-1 p-5 text-sm leading-relaxed">
             {TERMINAL_LINES.map((line, i) => (
               <div key={i} className={line.dim ? "text-slate-600" : ""}>
                 {line.prompt && <span className="text-green-500">$ </span>}
@@ -161,10 +157,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ASCII divider */}
-      <div className="mx-auto max-w-5xl px-6 py-4">
-        <p className="text-center text-xs text-slate-700">{"─".repeat(60)}</p>
-      </div>
+      <Divider className="mx-auto max-w-5xl px-6 py-4" />
 
       {/* Integration Examples */}
       <section id="integration" className="mx-auto max-w-5xl px-6 py-12">
@@ -180,7 +173,7 @@ export default function Landing() {
               <div className="border-b border-slate-800 px-4 py-2">
                 <span className="text-xs text-slate-600">{ex.label}</span>
               </div>
-              <pre className="p-4 text-xs leading-relaxed text-green-300/80">{ex.code}</pre>
+              <pre className="no-scrollbar overflow-x-auto p-4 text-xs leading-relaxed text-green-300/80">{ex.code}</pre>
             </div>
           ))}
         </div>
@@ -205,7 +198,7 @@ export default function Landing() {
       <section className="mx-auto max-w-5xl px-6 py-16">
         <div className="rounded border border-green-500/20 bg-green-500/[0.03] px-8 py-12 text-center">
           <p className="text-sm text-green-400/60">{">"} ready?</p>
-          <h2 className={`mt-3 text-3xl md:text-5xl ${tw.heading}`} style={fonts.display}>
+          <h2 className={`mt-3 text-2xl sm:text-3xl md:text-5xl ${tw.heading}`} style={fonts.display}>
             Ship with <span className={tw.accent}>confidence</span>
           </h2>
           <p className="mx-auto mt-4 max-w-md text-sm text-slate-500">

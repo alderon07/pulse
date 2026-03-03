@@ -8,7 +8,9 @@ import {
   Divider,
   Footer,
   PulseLogo,
+  NavItem,
 } from "@/app/components/ui";
+import { MobileToc } from "./MobileToc";
 
 export const metadata: Metadata = {
   title: "Pulse — Docs",
@@ -72,17 +74,19 @@ export default function DocsPage() {
       <ScanLines />
 
       {/* Navigation */}
-      <nav className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <nav className="relative z-10 mx-auto flex max-w-6xl items-start justify-between px-6 py-6">
         <PulseLogo asLink />
         <div className={tw.navLinks}>
-          <span className={tw.navActive}>[docs]</span>
-          <a href="#" className={tw.navLink}>[github]</a>
-          <Link href="/checks" className={tw.navLink}>[checks]</Link>
+          <NavItem href="/docs" label="docs" icon="docs" active />
+          <NavItem href="#" label="github" icon="github" external />
+          <NavItem href="/checks" label="checks" icon="checks" />
         </div>
       </nav>
 
+      <MobileToc items={TOC} />
+
       <div className="relative z-10 mx-auto flex max-w-6xl gap-10 px-6 pb-16">
-        {/* Sidebar TOC */}
+        {/* Sidebar TOC — desktop only */}
         <aside className="hidden w-52 shrink-0 lg:block">
           <div className="sticky top-8">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-600">On this page</p>
@@ -100,7 +104,7 @@ export default function DocsPage() {
         <main className="min-w-0 flex-1">
           <header>
             <p className={tw.breadcrumb}>{">"} pulse / docs</p>
-            <h1 className={`mt-2 text-3xl md:text-5xl ${tw.heading}`} style={fonts.display}>
+            <h1 className={`mt-2 text-2xl sm:text-3xl md:text-5xl ${tw.heading}`} style={fonts.display}>
               Docu<span className={tw.accent}>mentation</span>
             </h1>
             <p className={`mt-4 max-w-2xl ${tw.body}`}>
@@ -226,7 +230,7 @@ export default function DocsPage() {
               (<span className="text-white">X-Duration-MS</span>, <span className="text-white">X-Success</span>, etc.),
               or in a JSON POST body. Priority: body &gt; headers &gt; query.
             </p>
-            <div className={`overflow-x-auto ${tw.card}`}>
+            <div className={`no-scrollbar overflow-x-auto ${tw.card}`}>
               <table className="min-w-full text-xs">
                 <thead>
                   <tr className={tw.tableHeader}>
@@ -328,7 +332,7 @@ export default function DocsPage() {
           <section className="space-y-5">
             <SectionHeading id="api-reference">API <span className={tw.accent}>Reference</span></SectionHeading>
             <p className={tw.body}>All endpoints at a glance. Yellow dot = requires JWT auth.</p>
-            <div className={`overflow-x-auto ${tw.card}`}>
+            <div className={`no-scrollbar overflow-x-auto ${tw.card}`}>
               <table className="min-w-full text-xs">
                 <thead>
                   <tr className={tw.tableHeader}>
@@ -461,7 +465,7 @@ export default function DocsPage() {
           <section className="space-y-5">
             <SectionHeading id="rate-limits">Rate <span className={tw.accent}>Limits</span></SectionHeading>
             <p className={tw.body}>Ping endpoints are rate-limited per token + IP. Invalid tokens have a stricter limit.</p>
-            <div className={`overflow-x-auto ${tw.card}`}>
+            <div className={`no-scrollbar overflow-x-auto ${tw.card}`}>
               <table className="min-w-full text-xs">
                 <thead>
                   <tr className={tw.tableHeader}>

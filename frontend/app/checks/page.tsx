@@ -19,7 +19,9 @@ import {
   ErrorBanner,
   Footer,
   PulseLogo,
+  NavItem,
 } from "@/app/components/ui";
+import { LogIn } from "lucide-react";
 
 import { pauseCheckAction, resumeCheckAction } from "./actions";
 
@@ -96,9 +98,9 @@ export default async function ChecksPage({ searchParams }: PageProps) {
       <nav className={tw.navWrapper}>
         <PulseLogo asLink />
         <div className={tw.navLinks}>
-          <Link href="/docs" className={tw.navLink}>[docs]</Link>
-          <a href="#" className={tw.navLink}>[github]</a>
-          <span className={tw.navActive}>[checks]</span>
+          <NavItem href="/docs" label="docs" icon="docs" />
+          <NavItem href="#" label="github" icon="github" external />
+          <NavItem href="/checks" label="checks" icon="checks" active />
           {isClerkUiEnabled ? (
             <>
               <SignedIn>
@@ -107,7 +109,8 @@ export default async function ChecksPage({ searchParams }: PageProps) {
               <SignedOut>
                 <SignInButton mode="modal">
                   <button type="button" className={`${tw.navActive} transition hover:text-green-300`}>
-                    [login]
+                    <LogIn size={16} className="sm:hidden" />
+                    <span className="hidden sm:inline">[login]</span>
                   </button>
                 </SignInButton>
               </SignedOut>
@@ -173,7 +176,7 @@ export default async function ChecksPage({ searchParams }: PageProps) {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className="no-scrollbar overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr className={tw.tableHeader}>

@@ -23,7 +23,7 @@ export const inlineStyles = {
 // ─── Tailwind Class Strings ─────────────────────────────────
 export const tw = {
   // Page-level
-  page: "min-h-screen bg-black text-slate-200",
+  page: "min-h-screen overflow-x-clip bg-black text-slate-200",
   scanOverlay: "pointer-events-none fixed inset-0 z-20 opacity-[0.03]",
 
   // Surfaces
@@ -58,8 +58,8 @@ export const tw = {
 
   // Navigation
   navWrapper:
-    "relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6",
-  navLinks: "flex items-center gap-6 text-sm text-slate-500",
+    "relative z-10 mx-auto flex max-w-5xl items-start justify-between px-6 py-6",
+  navLinks: "flex flex-wrap items-center justify-end gap-2 sm:gap-3 md:gap-6 text-sm text-slate-500",
   navLink: "transition hover:text-green-400",
   navActive: "text-green-400",
 
