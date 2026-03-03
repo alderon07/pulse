@@ -48,4 +48,7 @@ just run-worker
 - Ping endpoint sets `Cache-Control: no-store`.
 - Token values are redacted from request logs.
 - Worker applies overdue transitions (`late` and `down`) and queues alert deliveries.
-- API expects HS256 JWTs (`JWT_HS256_SECRET`); `sub` must be a UUID.
+- API auth supports:
+  - HS256 JWTs via `JWT_HS256_SECRET`
+  - RS256 JWTs via `JWT_JWKS_URL` (e.g. Clerk)
+- For non-UUID JWT `sub` values (e.g. Clerk `user_...`), backend derives a stable UUID for internal user mapping.

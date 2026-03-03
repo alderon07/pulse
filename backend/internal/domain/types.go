@@ -34,6 +34,11 @@ type PingInput struct {
 	DurationMS     *int   `json:"duration_ms"`
 	OutputSize     *int   `json:"output_size"`
 	Success        *bool  `json:"success"`
+	State          string `json:"state,omitempty"`
+	Message        string `json:"msg,omitempty"`
+	Environment    string `json:"env,omitempty"`
+	Metric         string `json:"metric,omitempty"`
+	EventType      string `json:"-"`
 	IdempotencyKey string `json:"-"`
 	SourceIP       string `json:"-"`
 	UserAgent      string `json:"-"`

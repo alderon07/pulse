@@ -22,6 +22,18 @@ components:
         duration_ms: { type: integer, minimum: 0 }
         output_size: { type: integer, minimum: 0 }
         success: { type: boolean }
+        state:
+          type: string
+          enum: [run, ok, fail]
+        msg:
+          type: string
+          maxLength: 1024
+        env:
+          type: string
+          maxLength: 64
+        metric:
+          type: string
+          maxLength: 256
     PingResponse:
       type: object
       required: [ok, status, next_due_at]
@@ -75,6 +87,36 @@ paths:
           name: token
           required: true
           schema: { type: string }
+        - in: query
+          name: duration_ms
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: output_size
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: success
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+            enum: [run, start, ok, complete, success, pass, fail, failed, error]
+        - in: query
+          name: msg
+          required: false
+          schema: { type: string, maxLength: 1024 }
+        - in: query
+          name: env
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - in: query
+          name: metric
+          required: false
+          schema: { type: string, maxLength: 256 }
       responses:
         '200':
           description: accepted
@@ -89,6 +131,36 @@ paths:
           name: token
           required: true
           schema: { type: string }
+        - in: query
+          name: duration_ms
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: output_size
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: success
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+            enum: [run, start, ok, complete, success, pass, fail, failed, error]
+        - in: query
+          name: msg
+          required: false
+          schema: { type: string, maxLength: 1024 }
+        - in: query
+          name: env
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - in: query
+          name: metric
+          required: false
+          schema: { type: string, maxLength: 256 }
       requestBody:
         required: false
         content:

@@ -91,14 +91,35 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 	if input.IdempotencyKey != "" {
 		meta["idempotency_key"] = truncateString(input.IdempotencyKey, 128)
 	}
+	if input.State != "" {
+		meta["state"] = input.State
+	}
+	if input.Message != "" {
+		meta["msg"] = input.Message
+	}
+	if input.Environment != "" {
+		meta["env"] = input.Environment
+	}
+	if input.Metric != "" {
+		meta["metric"] = input.Metric
+	}
 	metaJSON, _ := json.Marshal(meta)
+
+	eventType := input.EventType
+	if eventType == "" {
+		eventType = "ping"
+	}
+	isFailureEvent := eventType == "fail"
+	shouldSendDownAlert := isFailureEvent &&
+		row.Status != string(domain.StatusDown) &&
+		row.Status != string(domain.StatusPaused)
 
 	var eventID int64
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO events (check_id, type, received_at, duration_ms, output_size, success, meta_json)
-		VALUES ($1, 'ping', now(), $2, $3, $4, $5)
+		VALUES ($1, $2, now(), $3, $4, $5, $6)
 		RETURNING id
-	`, row.ID, input.DurationMS, input.OutputSize, input.Success, metaJSON).Scan(&eventID); err != nil {
+	`, row.ID, eventType, input.DurationMS, input.OutputSize, input.Success, metaJSON).Scan(&eventID); err != nil {
 		return domain.PingResult{}, fmt.Errorf("insert ping event: %w", err)
 	}
 
@@ -112,37 +133,60 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 		SET
 			last_ping_at = now(),
 			next_due_at = now() + make_interval(secs => expected_interval_seconds),
-			status = CASE WHEN status = 'paused' THEN status ELSE 'up' END,
-			last_duration_ms = COALESCE($2, last_duration_ms),
-			baseline_duration_ms = $3,
-			sample_count_duration = $4,
-			last_output_size = COALESCE($5, last_output_size),
-			baseline_output_size = $6,
-			sample_count_output = $7,
-			last_success = COALESCE($8, last_success),
+			status = CASE
+				WHEN status = 'paused' THEN status
+				WHEN $2 THEN 'down'
+				ELSE 'up'
+			END,
+			last_duration_ms = COALESCE($4, last_duration_ms),
+			baseline_duration_ms = $5,
+			sample_count_duration = $6,
+			last_output_size = COALESCE($7, last_output_size),
+			baseline_output_size = $8,
+			sample_count_output = $9,
+			last_success = COALESCE($10, last_success),
+			last_alerted_at = CASE
+				WHEN status = 'paused' THEN last_alerted_at
+				WHEN $3 THEN now()
+				ELSE last_alerted_at
+			END,
 			updated_at = now()
 		WHERE id = $1
 		RETURNING status, next_due_at
-	`, row.ID, input.DurationMS, nextDurationBaseline, durationSamples, input.OutputSize, nextOutputBaseline, outputSamples, input.Success).Scan(&status, &nextDue); err != nil {
+	`, row.ID, isFailureEvent, shouldSendDownAlert, input.DurationMS, nextDurationBaseline, durationSamples, input.OutputSize, nextOutputBaseline, outputSamples, input.Success).Scan(&status, &nextDue); err != nil {
 		return domain.PingResult{}, fmt.Errorf("update check for ping: %w", err)
 	}
 
-	var incidentID string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT id FROM incidents WHERE check_id = $1 AND status = 'open' FOR UPDATE
-	`, row.ID).Scan(&incidentID); err == nil {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE incidents
-			SET status = 'resolved', resolved_at = now(), resolve_event_id = $2
-			WHERE id = $1
-		`, incidentID, eventID); err != nil {
-			return domain.PingResult{}, fmt.Errorf("resolve incident: %w", err)
+	if isFailureEvent {
+		if status != string(domain.StatusPaused) {
+			incidentID, err := s.ensureOpenIncident(ctx, tx, row.ID, eventID)
+			if err != nil {
+				return domain.PingResult{}, err
+			}
+			if shouldSendDownAlert {
+				if err := s.enqueueAlertsForAllChannels(ctx, tx, row.UserID, row.ID, &incidentID, domain.DeliveryDown, 0); err != nil {
+					return domain.PingResult{}, err
+				}
+			}
 		}
-		if err := s.enqueueAlertsForAllChannels(ctx, tx, row.UserID, row.ID, &incidentID, domain.DeliveryRecovered, 0); err != nil {
-			return domain.PingResult{}, err
+	} else {
+		var incidentID string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id FROM incidents WHERE check_id = $1 AND status = 'open' FOR UPDATE
+		`, row.ID).Scan(&incidentID); err == nil {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE incidents
+				SET status = 'resolved', resolved_at = now(), resolve_event_id = $2
+				WHERE id = $1
+			`, incidentID, eventID); err != nil {
+				return domain.PingResult{}, fmt.Errorf("resolve incident: %w", err)
+			}
+			if err := s.enqueueAlertsForAllChannels(ctx, tx, row.UserID, row.ID, &incidentID, domain.DeliveryRecovered, 0); err != nil {
+				return domain.PingResult{}, err
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return domain.PingResult{}, fmt.Errorf("select open incident: %w", err)
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return domain.PingResult{}, fmt.Errorf("select open incident: %w", err)
 	}
 
 	if input.IdempotencyKey != "" {
@@ -163,6 +207,27 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 		return domain.PingResult{}, fmt.Errorf("commit ping tx: %w", err)
 	}
 	return domain.PingResult{Status: domain.CheckStatus(status), NextDueAt: nextDue}, nil
+}
+
+func (s *Store) ensureOpenIncident(ctx context.Context, tx *sql.Tx, checkID string, openEventID int64) (string, error) {
+	var incidentID string
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO incidents(id, check_id, status, opened_at, open_event_id)
+		VALUES (gen_random_uuid(), $1, 'open', now(), $2)
+		ON CONFLICT DO NOTHING
+		RETURNING id
+	`, checkID, openEventID).Scan(&incidentID); err == nil {
+		return incidentID, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("insert open incident: %w", err)
+	}
+
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id FROM incidents WHERE check_id = $1 AND status = 'open' FOR UPDATE
+	`, checkID).Scan(&incidentID); err != nil {
+		return "", fmt.Errorf("select open incident: %w", err)
+	}
+	return incidentID, nil
 }
 
 func (s *Store) ProcessOverdueBatch(ctx context.Context, batchSize int, repeatInterval time.Duration) (int, error) {
