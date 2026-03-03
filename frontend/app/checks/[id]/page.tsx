@@ -16,6 +16,7 @@ import {
 import type { AlertChannel, Check, Event } from "@/lib/api/schemas";
 import { isClerkBackendEnabled, isClerkUiEnabled } from "@/lib/clerk-config";
 import { requireBackendAccessToken } from "@/lib/server/backend-auth";
+import { ScheduleModeFields } from "@/app/checks/components/schedule-mode-fields";
 
 import {
   createAlertChannelAction,
@@ -23,6 +24,7 @@ import {
   resumeCheckFromDetailAction,
   rotateTokenAction,
   toggleAlertChannelAction,
+  updateScheduleAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -210,6 +212,15 @@ export default async function CheckDetailPage({ params, searchParams }: PageProp
                 <dd className="text-slate-200">{check.grace_seconds}s</dd>
               </div>
               <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Schedule mode</dt>
+                <dd className="text-slate-200">
+                  {check.schedule_mode ?? "manual"}
+                  {check.schedule_mode === "auto" && check.interval_sample_count !== undefined
+                    ? ` (${check.interval_sample_count} samples)`
+                    : ""}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
                 <dt className="text-slate-500">Next due</dt>
                 <dd className="text-slate-200">{formatDate(check.next_due_at)}</dd>
               </div>
@@ -218,6 +229,23 @@ export default async function CheckDetailPage({ params, searchParams }: PageProp
                 <dd className="text-slate-200">{formatDate(check.last_ping_at)}</dd>
               </div>
             </dl>
+            <form action={updateScheduleAction} className="mt-4 grid gap-2 border-t border-slate-800 pt-4 sm:grid-cols-3">
+              <input type="hidden" name="check_id" value={check.id} />
+              <ScheduleModeFields
+                defaultMode={(check.schedule_mode ?? "manual") as "manual" | "auto"}
+                defaultIntervalSeconds={check.expected_interval_seconds}
+                defaultGraceSeconds={check.grace_seconds}
+                labelClassName="block text-xs text-slate-500"
+              />
+              <div className="sm:col-span-3">
+                <button
+                  type="submit"
+                  className="rounded border border-cyan-500/30 px-3 py-1.5 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/10"
+                >
+                  [save-timing]
+                </button>
+              </div>
+            </form>
           </article>
 
           <article className="rounded border border-slate-800 bg-[#0a0a0a] p-5">

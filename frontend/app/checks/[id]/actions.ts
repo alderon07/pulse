@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   createAlertChannel,
   patchAlertChannel,
+  patchCheck,
   pauseCheck,
   resumeCheck,
   rotateCheckToken,
@@ -42,6 +43,44 @@ function parseEnabledValue(rawValue: string) {
   }
 
   throw new Error("enabled must be true or false");
+}
+
+function parseStrictPositiveInt(rawValue: string, label: string) {
+  const parsed = Number.parseInt(rawValue, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be greater than 0`);
+  }
+  return parsed;
+}
+
+function parseNonNegativeInt(rawValue: string, label: string) {
+  const parsed = Number.parseInt(rawValue, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw new Error(`${label} must be greater than or equal to 0`);
+  }
+  return parsed;
+}
+
+function parseScheduleMode(rawValue: string) {
+  const mode = rawValue.trim().toLowerCase();
+  if (mode === "manual" || mode === "auto") {
+    return mode;
+  }
+  throw new Error("schedule_mode must be manual or auto");
+}
+
+function parseOptionalStrictPositiveInt(rawValue: FormDataEntryValue | null, label: string) {
+  if (typeof rawValue !== "string" || rawValue.trim() === "") {
+    return undefined;
+  }
+  return parseStrictPositiveInt(rawValue, label);
+}
+
+function parseOptionalNonNegativeInt(rawValue: FormDataEntryValue | null, label: string) {
+  if (typeof rawValue !== "string" || rawValue.trim() === "") {
+    return undefined;
+  }
+  return parseNonNegativeInt(rawValue, label);
 }
 
 function revalidateCheckPaths(checkId: string) {
@@ -83,6 +122,44 @@ export async function rotateTokenAction(formData: FormData) {
   try {
     const token = await requireBackendAccessToken();
     await rotateCheckToken(token, checkId);
+  } catch (error) {
+    redirect(detailPath(checkId, toActionErrorMessage(error)));
+  }
+
+  revalidateCheckPaths(checkId);
+  redirect(detailPath(checkId));
+}
+
+export async function updateScheduleAction(formData: FormData) {
+  const checkId = requiredField(formData, "check_id", "check_id");
+
+  try {
+    const scheduleMode = parseScheduleMode(requiredField(formData, "schedule_mode", "schedule_mode"));
+    let expectedIntervalSeconds: number | undefined;
+    let graceSeconds: number | undefined;
+    if (scheduleMode === "manual") {
+      expectedIntervalSeconds = parseStrictPositiveInt(
+        requiredField(formData, "expected_interval_seconds", "expected_interval_seconds"),
+        "expected_interval_seconds"
+      );
+      graceSeconds = parseNonNegativeInt(
+        requiredField(formData, "grace_seconds", "grace_seconds"),
+        "grace_seconds"
+      );
+    } else {
+      expectedIntervalSeconds = parseOptionalStrictPositiveInt(
+        formData.get("expected_interval_seconds"),
+        "expected_interval_seconds"
+      );
+      graceSeconds = parseOptionalNonNegativeInt(formData.get("grace_seconds"), "grace_seconds");
+    }
+
+    const token = await requireBackendAccessToken();
+    await patchCheck(token, checkId, {
+      schedule_mode: scheduleMode,
+      expected_interval_seconds: expectedIntervalSeconds,
+      grace_seconds: graceSeconds,
+    });
   } catch (error) {
     redirect(detailPath(checkId, toActionErrorMessage(error)));
   }

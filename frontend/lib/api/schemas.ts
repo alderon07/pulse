@@ -6,6 +6,7 @@ const isoDateTimeSchema = z.string().refine((value) => !Number.isNaN(Date.parse(
 
 export const checkStatusSchema = z.enum(["up", "late", "down", "paused"]);
 export const alertChannelTypeSchema = z.enum(["email", "webhook"]);
+export const scheduleModeSchema = z.enum(["manual", "auto"]);
 
 export const errorResponseSchema = z.object({
   code: z.string(),
@@ -38,6 +39,8 @@ export const checkSchema = z.object({
   token: z.string(),
   expected_interval_seconds: z.number().int().positive(),
   grace_seconds: z.number().int().nonnegative(),
+  schedule_mode: scheduleModeSchema.optional(),
+  interval_sample_count: z.number().int().nonnegative().optional(),
   status: checkStatusSchema,
   last_ping_at: isoDateTimeSchema.nullable().optional(),
   next_due_at: isoDateTimeSchema.nullable().optional(),
@@ -51,8 +54,9 @@ export const listChecksResponseSchema = z.object({
 
 export const createCheckRequestSchema = z.object({
   name: z.string().trim().min(1),
-  expected_interval_seconds: z.number().int().positive(),
-  grace_seconds: z.number().int().nonnegative(),
+  expected_interval_seconds: z.number().int().positive().optional(),
+  grace_seconds: z.number().int().nonnegative().optional(),
+  schedule_mode: scheduleModeSchema.optional(),
 });
 
 export const patchCheckRequestSchema = z
@@ -60,12 +64,14 @@ export const patchCheckRequestSchema = z
     name: z.string().trim().min(1).optional(),
     expected_interval_seconds: z.number().int().positive().optional(),
     grace_seconds: z.number().int().nonnegative().optional(),
+    schedule_mode: scheduleModeSchema.optional(),
   })
   .refine(
     (value) =>
       value.name !== undefined ||
       value.expected_interval_seconds !== undefined ||
-      value.grace_seconds !== undefined,
+      value.grace_seconds !== undefined ||
+      value.schedule_mode !== undefined,
     { message: "At least one field is required for patch" }
   );
 

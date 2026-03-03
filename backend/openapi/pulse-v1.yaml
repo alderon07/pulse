@@ -53,6 +53,10 @@ components:
         token: { type: string }
         expected_interval_seconds: { type: integer }
         grace_seconds: { type: integer }
+        schedule_mode:
+          type: string
+          enum: [manual, auto]
+        interval_sample_count: { type: integer }
         status: { type: string, enum: [up, late, down, paused] }
         last_ping_at: { type: string, format: date-time, nullable: true }
         next_due_at: { type: string, format: date-time, nullable: true }

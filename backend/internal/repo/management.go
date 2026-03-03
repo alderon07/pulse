@@ -14,6 +14,7 @@ type CheckPatch struct {
 	Name                    *string
 	ExpectedIntervalSeconds *int
 	GraceSeconds            *int
+	ScheduleMode            *string
 }
 
 type CheckRecord struct {
@@ -23,6 +24,8 @@ type CheckRecord struct {
 	Token                   string             `json:"token"`
 	ExpectedIntervalSeconds int                `json:"expected_interval_seconds"`
 	GraceSeconds            int                `json:"grace_seconds"`
+	ScheduleMode            string             `json:"schedule_mode"`
+	IntervalSampleCount     int                `json:"interval_sample_count"`
 	Status                  domain.CheckStatus `json:"status"`
 	LastPingAt              *time.Time         `json:"last_ping_at,omitempty"`
 	NextDueAt               *time.Time         `json:"next_due_at,omitempty"`
@@ -63,20 +66,22 @@ func (s *Store) EnsureUser(ctx context.Context, userID, email string) error {
 	return nil
 }
 
-func (s *Store) CreateCheck(ctx context.Context, userID, name, token string, expectedIntervalSeconds, graceSeconds int) (CheckRecord, error) {
+func (s *Store) CreateCheck(ctx context.Context, userID, name, token string, expectedIntervalSeconds, graceSeconds int, scheduleMode string) (CheckRecord, error) {
 	var rec CheckRecord
 	if err := s.db.QueryRowContext(ctx, `
-		INSERT INTO checks(user_id, name, token, expected_interval_seconds, grace_seconds)
-		VALUES ($1::uuid, $2, $3, $4, $5)
-		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		INSERT INTO checks(user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6)
+		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
-	`, userID, name, token, expectedIntervalSeconds, graceSeconds).Scan(
+	`, userID, name, token, expectedIntervalSeconds, graceSeconds, scheduleMode).Scan(
 		&rec.ID,
 		&rec.UserID,
 		&rec.Name,
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,
@@ -90,7 +95,7 @@ func (s *Store) CreateCheck(ctx context.Context, userID, name, token string, exp
 
 func (s *Store) ListChecks(ctx context.Context, userID string, limit, offset int) ([]CheckRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		SELECT id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 		FROM checks
 		WHERE user_id = $1::uuid AND deleted_at IS NULL
@@ -112,6 +117,8 @@ func (s *Store) ListChecks(ctx context.Context, userID string, limit, offset int
 			&rec.Token,
 			&rec.ExpectedIntervalSeconds,
 			&rec.GraceSeconds,
+			&rec.ScheduleMode,
+			&rec.IntervalSampleCount,
 			&rec.Status,
 			&rec.LastPingAt,
 			&rec.NextDueAt,
@@ -131,7 +138,7 @@ func (s *Store) ListChecks(ctx context.Context, userID string, limit, offset int
 func (s *Store) GetCheck(ctx context.Context, userID, checkID string) (CheckRecord, error) {
 	var rec CheckRecord
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		SELECT id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 		FROM checks
 		WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL
@@ -142,6 +149,8 @@ func (s *Store) GetCheck(ctx context.Context, userID, checkID string) (CheckReco
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,
@@ -176,12 +185,17 @@ func (s *Store) UpdateCheck(ctx context.Context, userID, checkID string, patch C
 		args = append(args, *patch.GraceSeconds)
 		argIdx++
 	}
+	if patch.ScheduleMode != nil {
+		sets = append(sets, fmt.Sprintf("schedule_mode = $%d", argIdx))
+		args = append(args, *patch.ScheduleMode)
+		argIdx++
+	}
 
 	query := fmt.Sprintf(`
 		UPDATE checks
 		SET %s
 		WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL
-		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 	`, strings.Join(sets, ", "))
 
@@ -193,6 +207,8 @@ func (s *Store) UpdateCheck(ctx context.Context, userID, checkID string, patch C
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,
@@ -227,7 +243,7 @@ func (s *Store) PauseCheck(ctx context.Context, userID, checkID string) (CheckRe
 		UPDATE checks
 		SET status = 'paused', updated_at = now()
 		WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL
-		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 	`, checkID, userID).Scan(
 		&rec.ID,
@@ -236,6 +252,8 @@ func (s *Store) PauseCheck(ctx context.Context, userID, checkID string) (CheckRe
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,
@@ -262,7 +280,7 @@ func (s *Store) ResumeCheck(ctx context.Context, userID, checkID string) (CheckR
 			next_due_at = now() + make_interval(secs => expected_interval_seconds),
 			updated_at = now()
 		WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL
-		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 	`, checkID, userID).Scan(
 		&rec.ID,
@@ -271,6 +289,8 @@ func (s *Store) ResumeCheck(ctx context.Context, userID, checkID string) (CheckR
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,
@@ -291,7 +311,7 @@ func (s *Store) RotateCheckToken(ctx context.Context, userID, checkID, token str
 		UPDATE checks
 		SET token = $3, updated_at = now()
 		WHERE id = $1::uuid AND user_id = $2::uuid AND deleted_at IS NULL
-		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds,
+		RETURNING id, user_id, name, token, expected_interval_seconds, grace_seconds, schedule_mode, interval_sample_count,
 			status, last_ping_at, next_due_at, created_at, updated_at
 	`, checkID, userID, token).Scan(
 		&rec.ID,
@@ -300,6 +320,8 @@ func (s *Store) RotateCheckToken(ctx context.Context, userID, checkID, token str
 		&rec.Token,
 		&rec.ExpectedIntervalSeconds,
 		&rec.GraceSeconds,
+		&rec.ScheduleMode,
+		&rec.IntervalSampleCount,
 		&rec.Status,
 		&rec.LastPingAt,
 		&rec.NextDueAt,

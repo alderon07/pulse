@@ -14,16 +14,25 @@ import (
 	"pulse/backend/internal/service"
 )
 
+const (
+	scheduleModeManual                 = "manual"
+	scheduleModeAuto                   = "auto"
+	defaultAutoExpectedIntervalSeconds = 3600
+	defaultAutoGraceSeconds            = 180
+)
+
 type createCheckRequest struct {
 	Name                    string `json:"name"`
-	ExpectedIntervalSeconds int    `json:"expected_interval_seconds"`
-	GraceSeconds            int    `json:"grace_seconds"`
+	ExpectedIntervalSeconds *int   `json:"expected_interval_seconds"`
+	GraceSeconds            *int   `json:"grace_seconds"`
+	ScheduleMode            string `json:"schedule_mode"`
 }
 
 type patchCheckRequest struct {
 	Name                    *string `json:"name"`
 	ExpectedIntervalSeconds *int    `json:"expected_interval_seconds"`
 	GraceSeconds            *int    `json:"grace_seconds"`
+	ScheduleMode            *string `json:"schedule_mode"`
 }
 
 type createAlertChannelRequest struct {
@@ -54,8 +63,26 @@ func (s *Server) handleCreateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" || req.ExpectedIntervalSeconds <= 0 || req.GraceSeconds < 0 {
-		writeError(w, http.StatusBadRequest, "name, expected_interval_seconds (>0), and grace_seconds (>=0) are required")
+	mode := normalizeScheduleMode(req.ScheduleMode)
+	if mode == "" {
+		writeError(w, http.StatusBadRequest, "schedule_mode must be manual or auto")
+		return
+	}
+
+	expectedIntervalSeconds := defaultAutoExpectedIntervalSeconds
+	if req.ExpectedIntervalSeconds != nil {
+		expectedIntervalSeconds = *req.ExpectedIntervalSeconds
+	}
+	graceSeconds := defaultAutoGraceSeconds
+	if req.GraceSeconds != nil {
+		graceSeconds = *req.GraceSeconds
+	}
+	if req.Name == "" || expectedIntervalSeconds <= 0 || graceSeconds < 0 {
+		writeError(w, http.StatusBadRequest, "name is required; expected_interval_seconds must be > 0; grace_seconds must be >= 0")
+		return
+	}
+	if mode == scheduleModeManual && (req.ExpectedIntervalSeconds == nil || req.GraceSeconds == nil) {
+		writeError(w, http.StatusBadRequest, "manual mode requires expected_interval_seconds and grace_seconds")
 		return
 	}
 	token, err := service.GenerateSecureToken(32)
@@ -65,7 +92,15 @@ func (s *Server) handleCreateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	check, err := s.store.CreateCheck(r.Context(), userID, req.Name, token, req.ExpectedIntervalSeconds, req.GraceSeconds)
+	check, err := s.store.CreateCheck(
+		r.Context(),
+		userID,
+		req.Name,
+		token,
+		expectedIntervalSeconds,
+		graceSeconds,
+		mode,
+	)
 	if err != nil {
 		s.logger.Error("create check", "error", err)
 		writeError(w, http.StatusBadRequest, "failed to create check")
@@ -132,7 +167,7 @@ func (s *Server) handlePatchCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Name == nil && req.ExpectedIntervalSeconds == nil && req.GraceSeconds == nil {
+	if req.Name == nil && req.ExpectedIntervalSeconds == nil && req.GraceSeconds == nil && req.ScheduleMode == nil {
 		writeError(w, http.StatusBadRequest, "no patch fields provided")
 		return
 	}
@@ -152,11 +187,24 @@ func (s *Server) handlePatchCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "grace_seconds must be >= 0")
 		return
 	}
+	if req.ScheduleMode != nil {
+		if strings.TrimSpace(*req.ScheduleMode) == "" {
+			writeError(w, http.StatusBadRequest, "schedule_mode must be manual or auto")
+			return
+		}
+		normalized := normalizeScheduleMode(*req.ScheduleMode)
+		if normalized == "" {
+			writeError(w, http.StatusBadRequest, "schedule_mode must be manual or auto")
+			return
+		}
+		req.ScheduleMode = &normalized
+	}
 
 	check, err := s.store.UpdateCheck(r.Context(), userID, id, repo.CheckPatch{
 		Name:                    req.Name,
 		ExpectedIntervalSeconds: req.ExpectedIntervalSeconds,
 		GraceSeconds:            req.GraceSeconds,
+		ScheduleMode:            req.ScheduleMode,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -358,6 +406,17 @@ func intFromQuery(r *http.Request, key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func normalizeScheduleMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode == "" {
+		return scheduleModeManual
+	}
+	if mode == scheduleModeManual || mode == scheduleModeAuto {
+		return mode
+	}
+	return ""
 }
 
 func maskTarget(target string) string {

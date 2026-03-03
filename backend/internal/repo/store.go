@@ -12,7 +12,15 @@ import (
 	"pulse/backend/internal/domain"
 )
 
-const defaultEWMAAlpha = 0.2
+const (
+	defaultEWMAAlpha             = 0.2
+	scheduleModeAuto             = "auto"
+	minObservedIntervalSeconds   = 5
+	maxObservedIntervalSeconds   = 2_678_400 // 31 days
+	minAutoGraceSeconds          = 15
+	maxAutoGraceSeconds          = 86_400
+	minAutoSamplesBeforeApplying = 3
+)
 
 type Store struct {
 	db        *sql.DB
@@ -29,6 +37,11 @@ type checkRow struct {
 	Status              string
 	ExpectedIntervalSec int
 	GraceSec            int
+	ScheduleMode        string
+	LastPingAt          sql.NullTime
+	IntervalEWMA        sql.NullFloat64
+	IntervalJitterEWMA  sql.NullFloat64
+	IntervalSampleCount int
 	BaselineDuration    sql.NullFloat64
 	BaselineOutput      sql.NullFloat64
 	SampleDuration      int
@@ -44,7 +57,8 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 
 	row := checkRow{}
 	if err := tx.QueryRowContext(ctx, `
-		SELECT id, user_id, status, expected_interval_seconds, grace_seconds,
+		SELECT id, user_id, status, expected_interval_seconds, grace_seconds, schedule_mode, last_ping_at,
+		       interval_ewma_seconds, interval_jitter_ewma_seconds, interval_sample_count,
 		       baseline_duration_ms, baseline_output_size,
 		       sample_count_duration, sample_count_output
 		FROM checks
@@ -56,6 +70,11 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 		&row.Status,
 		&row.ExpectedIntervalSec,
 		&row.GraceSec,
+		&row.ScheduleMode,
+		&row.LastPingAt,
+		&row.IntervalEWMA,
+		&row.IntervalJitterEWMA,
+		&row.IntervalSampleCount,
 		&row.BaselineDuration,
 		&row.BaselineOutput,
 		&row.SampleDuration,
@@ -125,6 +144,8 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 
 	nextDurationBaseline, durationSamples := updatedBaseline(row.BaselineDuration, row.SampleDuration, input.DurationMS, s.ewmaAlpha)
 	nextOutputBaseline, outputSamples := updatedBaseline(row.BaselineOutput, row.SampleOutput, input.OutputSize, s.ewmaAlpha)
+	nextExpectedIntervalSec, nextGraceSec, nextIntervalEWMA, nextIntervalJitterEWMA, nextIntervalSamples :=
+		deriveNextSchedule(row, time.Now().UTC(), s.ewmaAlpha)
 
 	var status string
 	var nextDue time.Time
@@ -132,7 +153,7 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 		UPDATE checks
 		SET
 			last_ping_at = now(),
-			next_due_at = now() + make_interval(secs => expected_interval_seconds),
+			next_due_at = now() + make_interval(secs => $11),
 			status = CASE
 				WHEN status = 'paused' THEN status
 				WHEN $2 THEN 'down'
@@ -145,6 +166,11 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 			baseline_output_size = $8,
 			sample_count_output = $9,
 			last_success = COALESCE($10, last_success),
+			expected_interval_seconds = $11,
+			grace_seconds = $12,
+			interval_ewma_seconds = $13,
+			interval_jitter_ewma_seconds = $14,
+			interval_sample_count = $15,
 			last_alerted_at = CASE
 				WHEN status = 'paused' THEN last_alerted_at
 				WHEN $3 THEN now()
@@ -153,7 +179,7 @@ func (s *Store) RecordPing(ctx context.Context, token string, input domain.PingI
 			updated_at = now()
 		WHERE id = $1
 		RETURNING status, next_due_at
-	`, row.ID, isFailureEvent, shouldSendDownAlert, input.DurationMS, nextDurationBaseline, durationSamples, input.OutputSize, nextOutputBaseline, outputSamples, input.Success).Scan(&status, &nextDue); err != nil {
+	`, row.ID, isFailureEvent, shouldSendDownAlert, input.DurationMS, nextDurationBaseline, durationSamples, input.OutputSize, nextOutputBaseline, outputSamples, input.Success, nextExpectedIntervalSec, nextGraceSec, nextIntervalEWMA, nextIntervalJitterEWMA, nextIntervalSamples).Scan(&status, &nextDue); err != nil {
 		return domain.PingResult{}, fmt.Errorf("update check for ping: %w", err)
 	}
 
@@ -487,4 +513,74 @@ func truncateString(v string, max int) string {
 		return v
 	}
 	return v[:max]
+}
+
+func deriveNextSchedule(row checkRow, now time.Time, alpha float64) (int, int, *float64, *float64, int) {
+	expectedIntervalSec := row.ExpectedIntervalSec
+	graceSec := row.GraceSec
+	intervalEWMA := cloneNullFloat64(row.IntervalEWMA)
+	intervalJitterEWMA := cloneNullFloat64(row.IntervalJitterEWMA)
+	sampleCount := row.IntervalSampleCount
+
+	if row.ScheduleMode != scheduleModeAuto || !row.LastPingAt.Valid {
+		return expectedIntervalSec, graceSec, intervalEWMA, intervalJitterEWMA, sampleCount
+	}
+
+	observed := now.Sub(row.LastPingAt.Time).Seconds()
+	if observed < minObservedIntervalSeconds || observed > maxObservedIntervalSeconds {
+		return expectedIntervalSec, graceSec, intervalEWMA, intervalJitterEWMA, sampleCount
+	}
+
+	if intervalEWMA == nil {
+		intervalEWMA = floatPtr(observed)
+	} else {
+		intervalEWMA = floatPtr(alpha*observed + (1-alpha)*(*intervalEWMA))
+	}
+
+	jitterBaseline := observed
+	if row.IntervalEWMA.Valid {
+		jitterBaseline = row.IntervalEWMA.Float64
+	}
+	observedJitter := math.Abs(observed - jitterBaseline)
+	if intervalJitterEWMA == nil {
+		intervalJitterEWMA = floatPtr(observedJitter)
+	} else {
+		intervalJitterEWMA = floatPtr(alpha*observedJitter + (1-alpha)*(*intervalJitterEWMA))
+	}
+
+	sampleCount++
+	if sampleCount < minAutoSamplesBeforeApplying || intervalEWMA == nil {
+		return expectedIntervalSec, graceSec, intervalEWMA, intervalJitterEWMA, sampleCount
+	}
+
+	learnedIntervalSec := clampInt(int(math.Round(*intervalEWMA)), minObservedIntervalSeconds, maxObservedIntervalSeconds)
+	learnedGraceSec := minAutoGraceSeconds
+	if intervalJitterEWMA != nil {
+		candidate := int(math.Ceil(math.Max(float64(minAutoGraceSeconds), math.Min(float64(learnedIntervalSec)/2, *intervalJitterEWMA*3+5))))
+		learnedGraceSec = clampInt(candidate, minAutoGraceSeconds, maxAutoGraceSeconds)
+	}
+
+	return learnedIntervalSec, learnedGraceSec, intervalEWMA, intervalJitterEWMA, sampleCount
+}
+
+func cloneNullFloat64(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
+	}
+	c := v.Float64
+	return &c
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }

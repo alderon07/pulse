@@ -22,8 +22,13 @@ import {
   NavItem,
 } from "@/app/components/ui";
 import { LogIn } from "lucide-react";
+import { ScheduleModeFields } from "@/app/checks/components/schedule-mode-fields";
 
-import { pauseCheckAction, resumeCheckAction } from "./actions";
+import {
+  createCheckAction,
+  pauseCheckAction,
+  resumeCheckAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +60,13 @@ function formatDate(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function maskToken(token: string) {
+  if (token.length <= 12) {
+    return token;
+  }
+  return `${token.slice(0, 8)}...${token.slice(-4)}`;
 }
 
 function checksHref(limit: number, offset: number) {
@@ -151,6 +163,34 @@ export default async function ChecksPage({ searchParams }: PageProps) {
         {params.error && <ErrorBanner message={params.error} />}
         {loadingError && <ErrorBanner message={loadingError} />}
 
+        <section className={tw.cardOverflow}>
+          <WindowChrome label="new check" />
+          <form action={createCheckAction} className="grid gap-3 border-b border-slate-800 px-5 py-4 md:grid-cols-4">
+            <input type="hidden" name="offset" value={String(offset)} />
+            <input type="hidden" name="limit" value={String(limit)} />
+            <label className="text-xs uppercase tracking-wide text-slate-500 md:col-span-2">
+              Name
+              <input
+                type="text"
+                name="name"
+                placeholder="nightly-backup"
+                required
+                className="mt-1.5 w-full rounded border border-slate-800 bg-black px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-green-500/50"
+              />
+            </label>
+            <ScheduleModeFields
+              defaultMode="auto"
+              defaultIntervalSeconds={3600}
+              defaultGraceSeconds={180}
+            />
+            <div className="md:col-span-4">
+              <button type="submit" className={tw.btnPrimary}>
+                [create-check]
+              </button>
+            </div>
+          </form>
+        </section>
+
         {/* Checks table */}
         <section className={tw.cardOverflow}>
           <WindowChrome label={`checks — ${checks.length} results`} />
@@ -181,6 +221,7 @@ export default async function ChecksPage({ searchParams }: PageProps) {
               <thead>
                 <tr className={tw.tableHeader}>
                   <th className="px-5 py-3 font-medium">Name</th>
+                  <th className="px-5 py-3 font-medium">Token</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Interval</th>
                   <th className="px-5 py-3 font-medium">Next Due</th>
@@ -208,6 +249,22 @@ export default async function ChecksPage({ searchParams }: PageProps) {
                         </div>
                       </td>
                       <td className="px-5 py-3">
+                        <p className="text-xs text-slate-400" style={fonts.mono}>
+                          {maskToken(check.token)}
+                        </p>
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-xs text-green-400 transition hover:text-green-300">
+                            [reveal]
+                          </summary>
+                          <p
+                            className="mt-1 max-w-[18rem] overflow-auto rounded border border-slate-800 bg-black px-2 py-1 text-[11px] text-green-300"
+                            style={fonts.mono}
+                          >
+                            {check.token}
+                          </p>
+                        </details>
+                      </td>
+                      <td className="px-5 py-3">
                         <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-bold uppercase ${sc.badge}`}>
                           {check.status}
                         </span>
@@ -217,6 +274,12 @@ export default async function ChecksPage({ searchParams }: PageProps) {
                         <span className="text-slate-700"> + </span>
                         {check.grace_seconds}s
                         <span className="text-slate-600"> grace</span>
+                        <div className="mt-1 text-xs text-slate-600">
+                          mode: {check.schedule_mode ?? "manual"}
+                          {check.schedule_mode === "auto" && check.interval_sample_count !== undefined
+                            ? ` (${check.interval_sample_count} samples)`
+                            : ""}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-slate-400">{formatDate(check.next_due_at)}</td>
                       <td className="px-5 py-3 text-slate-400">{formatDate(check.last_ping_at)}</td>
@@ -247,7 +310,7 @@ export default async function ChecksPage({ searchParams }: PageProps) {
                 })}
                 {checks.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-14 text-center">
+                    <td colSpan={7} className="px-5 py-14 text-center">
                       <p className="text-slate-600">
                         <span className="text-green-500">$</span> No checks found for this account.
                       </p>
