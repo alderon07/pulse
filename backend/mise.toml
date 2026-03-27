@@ -1,6 +1,0 @@
-[tools]
-go = "1.26"
-"github:pressly/goose" = "3.26.0"
-"github:sqlc-dev/sqlc" = "1.30.0"
-"github:deepmap/oapi-codegen/v2/cmd/oapi-codegen" = "2.4.1"
-"github:golangci/golangci-lint/cmd/golangci-lint" = "2.5.0"
